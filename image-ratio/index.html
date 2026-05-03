@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Image Ratio Tool</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+
+  .controls {
+    margin-top: 15px;
+    margin-bottom: 15px;
+  }
+
+  input, button {
+    margin: 5px;
+    padding: 6px;
+  }
+
+  .container {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .container.dragover {
+    outline: 3px dashed #4da3ff;
+  }
+
+  .bg {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(20px) brightness(0.7);
+    transform: scale(1.1);
+  }
+
+  .fg {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .placeholder {
+    z-index: 2;
+    opacity: 0.6;
+    text-align: center;
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+
+  .container {
+    width: 800px;
+	height: 450px;
+  }
+
+  .btn-save {
+    font-size: 1.5em;
+	font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Image Ratio Tool</h1>
+</div>
+
+<div class="controls">
+  Width: <input type="number" id="width" Value="" onclick="this.select()" disabled>
+  Height: <input type="number" id="height" Value="" onclick="this.select()" disabled>
+</div>
+
+<div class="container" id="container">
+  <div class="placeholder" id="placeholder">
+    Drag & Drop Image<br>or Click
+  </div>
+  <img class="bg" id="bg">
+  <img class="fg" id="fg">
+</div>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<div class="controls">
+  <button class="btn-save" onclick="saveImage()">Save</button>
+</div>
+
+<script>
+const container = document.getElementById('container');
+const fileInput = document.getElementById('fileInput');
+const bg = document.getElementById('bg');
+const fg = document.getElementById('fg');
+const placeholder = document.getElementById('placeholder');
+const inputW = document.getElementById('width');
+const inputH = document.getElementById('height');
+
+let currentFileName = "output.png";
+let imgElement = new Image();
+
+// Load image
+function setImage(file) {
+  const url = URL.createObjectURL(file);
+
+  bg.src = url;
+  fg.src = url;
+
+  imgElement.src = url;
+
+  // keep filename, change to .png
+  currentFileName = file.name.replace(/\.[^/.]+$/, "") + ".png";
+
+  placeholder.style.display = "none";
+
+  // IMPORTANT: wait for image load
+  imgElement.onload = () => {
+    const w = imgElement.naturalWidth;
+    const h = imgElement.naturalHeight;
+
+    inputW.value = w;
+    inputH.value = h;
+	
+	inputW.disabled = false;
+	inputH.disabled = false;
+
+    updateSize(); // resize container immediately
+  };
+}
+
+// Click upload
+container.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) setImage(e.target.files[0]);
+});
+
+// Drag & Drop
+container.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  container.classList.add('dragover');
+});
+
+container.addEventListener('dragleave', () => {
+  container.classList.remove('dragover');
+});
+
+container.addEventListener('drop', (e) => {
+  e.preventDefault();
+  container.classList.remove('dragover');
+
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    setImage(file);
+  }
+});
+
+// Resize
+function updateSize() {
+  const w = document.getElementById('width').value;
+  const h = document.getElementById('height').value;
+
+  container.style.width = w + "px";
+  container.style.height = h + "px";
+}
+
+document.getElementById('width').addEventListener('input', updateSize);
+document.getElementById('height').addEventListener('input', updateSize);
+
+updateSize();
+
+// Save image using canvas
+async function saveImage() {
+  const w = parseInt(document.getElementById('width').value);
+  const h = parseInt(document.getElementById('height').value);
+
+  if (!imgElement.src) {
+    alert("Please load an image first.");
+    return;
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = w;
+  canvas.height = h;
+
+  // Draw blurred background
+  ctx.filter = "blur(20px) brightness(0.7)";
+  ctx.drawImage(imgElement, 0, 0, w, h);
+
+  // Reset filter
+  ctx.filter = "none";
+
+  // Draw foreground (contain)
+  const imgRatio = imgElement.width / imgElement.height;
+  const canvasRatio = w / h;
+
+  let drawWidth, drawHeight;
+
+  if (imgRatio > canvasRatio) {
+    drawWidth = w;
+    drawHeight = w / imgRatio;
+  } else {
+    drawHeight = h;
+    drawWidth = h * imgRatio;
+  }
+
+  const x = (w - drawWidth) / 2;
+  const y = (h - drawHeight) / 2;
+
+  ctx.drawImage(imgElement, x, y, drawWidth, drawHeight);
+
+  // Convert canvas → blob
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: currentFileName || "output.png",
+      types: [{
+        description: "PNG Image",
+        accept: { "image/png": [".png"] }
+      }]
+    });
+
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+
+  } catch (err) {
+    console.log("Save cancelled or failed:", err);
+  }
+}
+</script>
+
+</body>
+</html>
